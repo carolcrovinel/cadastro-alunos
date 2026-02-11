@@ -258,7 +258,7 @@ export default function Alunos() {
                 </div>
 
                 <div className="col-md-4">
-                  <input className="form-control" placeholder="Processo (4444/44)"
+                  <input className="form-control" placeholder="Processo"
                     value={form.processo} onChange={handleProcessoChange} maxLength={7} />
                 </div>
 
