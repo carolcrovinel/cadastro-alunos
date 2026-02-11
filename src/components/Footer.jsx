@@ -1,7 +1,11 @@
 export default function Footer() {
+  const ano = new Date().getFullYear();
+
   return (
-    <footer className="bg-danger text-white text-center py-2 w-100">
-      <small>Sistema de Cadastro de Alunos</small>
+    <footer className="bg-dark text-white text-center py-3 mt-auto">
+      <small>
+        © {ano} Sistema de Cadastro de Alunos — Desenvolvido por Carol Crovinel
+      </small>
     </footer>
   );
 }
