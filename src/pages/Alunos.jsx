@@ -233,7 +233,7 @@ export default function Alunos() {
           {/* FILTRO + LIMITE */}
           <div className="row mb-3 align-items-end">
             <div className="col-md-6">
-              <Form.Label>Pesquisar (todas as colunas)</Form.Label>
+              <Form.Label>Pesquisar</Form.Label>
               <Form.Control
                 placeholder="Digite qualquer informação"
                 value={pesquisa}
