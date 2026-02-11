@@ -134,11 +134,46 @@ export default function Alunos() {
         setTotal(count || 0);
     }
 
+    async function processoJaExiste(processo) {
+        if (!processo) return false;
+
+        let query = supabase
+            .from('alunos')
+            .select('id')
+            .eq('processo', processo);
+
+        // se estiver editando, ignora o próprio registro
+        if (alunoEditando) {
+            query = query.neq('id', alunoEditando);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error(error);
+            return false;
+        }
+
+        return data && data.length > 0;
+    }
+
+
     async function salvarOuAtualizar() {
+
         if (!form.nome) {
             setTipoMensagem('danger');
             setMensagem('Nome é obrigatório.');
             return;
+        }
+
+        if (form.processo) {
+            const existe = await processoJaExiste(form.processo);
+
+            if (existe) {
+                setTipoMensagem('danger');
+                setMensagem('Já existe um aluno cadastrado com este processo.');
+                return;
+            }
         }
 
         const payload = {
@@ -160,7 +195,7 @@ export default function Alunos() {
     }
 
     async function logout() {
-    await supabase.auth.signOut();
+        await supabase.auth.signOut();
     }
 
 
@@ -344,9 +379,9 @@ export default function Alunos() {
                     <thead className="table-danger">
                         <tr>
                             <th onClick={() => ordenarPor('nome')}>Nome {icone('nome')}</th>
+                            <th onClick={() => ordenarPor('processo')}>Processo {icone('processo')}</th>
                             <th onClick={() => ordenarPor('nomemae')}>Mãe {icone('nomemae')}</th>
                             <th onClick={() => ordenarPor('datanascimento')}>Nascimento {icone('datanascimento')}</th>
-                            <th onClick={() => ordenarPor('processo')}>Processo {icone('processo')}</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -354,9 +389,9 @@ export default function Alunos() {
                         {alunos.map(a => (
                             <tr key={a.id}>
                                 <td>{a.nome}</td>
+                                <td>{a.processo || '-'}</td>
                                 <td>{a.nomemae || '-'}</td>
                                 <td>{dataParaTela(a.datanascimento)}</td>
-                                <td>{a.processo || '-'}</td>
                                 <td>
                                     <Button size="sm" variant="warning" onClick={() => editarAluno(a)}>Editar</Button>{' '}
                                     <Button size="sm" variant="danger" onClick={() => confirmarExcluir(a)}>Excluir</Button>
