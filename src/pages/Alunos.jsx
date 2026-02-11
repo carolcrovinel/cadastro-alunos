@@ -11,24 +11,24 @@ export default function Alunos() {
   const [pagina, setPagina] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // ITENS POR PÁGINA (até 100)
+  // itens por página (máx 100)
   const [limite, setLimite] = useState(10);
 
-  // ORDENAÇÃO
+  // ordenação
   const [ordenacao, setOrdenacao] = useState({
     coluna: 'created_at',
     direcao: 'desc'
   });
 
-  // MENSAGENS
+  // mensagens
   const [mensagem, setMensagem] = useState(null);
   const [tipoMensagem, setTipoMensagem] = useState('success');
 
-  // MODAL EXCLUIR
+  // modal excluir
   const [showModalExcluir, setShowModalExcluir] = useState(false);
   const [alunoParaExcluir, setAlunoParaExcluir] = useState(null);
 
-  // FORM
+  // formulário
   const [form, setForm] = useState({
     nome: '',
     nomemae: '',
@@ -38,17 +38,26 @@ export default function Alunos() {
   });
 
   /* ======================
-     UTILITÁRIOS DE DATA
+     MÁSCARAS / FORMATOS
      ====================== */
 
   function handleDateChange(e) {
     let value = e.target.value.replace(/\D/g, '');
 
     if (value.length > 2) value = value.replace(/^(\d{2})(\d)/, '$1/$2');
-    if (value.length > 5)
-      value = value.replace(/^(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
+    if (value.length > 5) value = value.replace(/^(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
 
     setForm({ ...form, datanascimento: value });
+  }
+
+  function handleProcessoChange(e) {
+    let value = e.target.value.replace(/\D/g, '');
+
+    if (value.length > 4) {
+      value = value.replace(/^(\d{4})(\d)/, '$1/$2');
+    }
+
+    setForm({ ...form, processo: value });
   }
 
   function formatarDataParaBanco(data) {
@@ -82,6 +91,24 @@ export default function Alunos() {
   }
 
   /* ======================
+     VALIDAÇÕES
+     ====================== */
+
+  async function processoJaExiste(processo) {
+    let query = supabase
+      .from('alunos')
+      .select('id')
+      .eq('processo', processo);
+
+    if (alunoEditando) {
+      query = query.neq('id', alunoEditando);
+    }
+
+    const { data } = await query;
+    return data && data.length > 0;
+  }
+
+  /* ======================
      CRUD
      ====================== */
 
@@ -102,6 +129,7 @@ export default function Alunos() {
     }
 
     const { data, count } = await query;
+
     setAlunos(data || []);
     setTotal(count || 0);
   }
@@ -111,6 +139,15 @@ export default function Alunos() {
       setTipoMensagem('danger');
       setMensagem('O nome do aluno é obrigatório.');
       return;
+    }
+
+    if (form.processo) {
+      const existe = await processoJaExiste(form.processo);
+      if (existe) {
+        setTipoMensagem('danger');
+        setMensagem('Já existe um aluno cadastrado com este número de processo.');
+        return;
+      }
     }
 
     const payload = {
@@ -206,19 +243,29 @@ export default function Alunos() {
             <div className="card-body">
               <div className="row g-3">
                 <div className="col-md-6">
-                  <input className="form-control" placeholder="Nome" value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
+                  <input className="form-control" placeholder="Nome" value={form.nome}
+                    onChange={e => setForm({ ...form, nome: e.target.value })} />
                 </div>
+
                 <div className="col-md-6">
-                  <input className="form-control" placeholder="Nome da mãe" value={form.nomemae} onChange={e => setForm({ ...form, nomemae: e.target.value })} />
+                  <input className="form-control" placeholder="Nome da mãe" value={form.nomemae}
+                    onChange={e => setForm({ ...form, nomemae: e.target.value })} />
                 </div>
+
                 <div className="col-md-4">
-                  <input className="form-control" placeholder="dd/mm/aaaa" value={form.datanascimento} onChange={handleDateChange} />
+                  <input className="form-control" placeholder="dd/mm/aaaa"
+                    value={form.datanascimento} onChange={handleDateChange} maxLength={10} />
                 </div>
-                <div className="col-md-8">
-                  <input className="form-control" placeholder="Processo" value={form.processo} onChange={e => setForm({ ...form, processo: e.target.value })} />
+
+                <div className="col-md-4">
+                  <input className="form-control" placeholder="Processo (4444/44)"
+                    value={form.processo} onChange={handleProcessoChange} maxLength={7} />
                 </div>
+
                 <div className="col-12">
-                  <textarea className="form-control" rows="3" placeholder="Observações" value={form.observacoes} onChange={e => setForm({ ...form, observacoes: e.target.value })} />
+                  <textarea className="form-control" rows="3" placeholder="Observações"
+                    value={form.observacoes}
+                    onChange={e => setForm({ ...form, observacoes: e.target.value })} />
                 </div>
               </div>
 
@@ -226,6 +273,12 @@ export default function Alunos() {
                 <Button variant="danger" onClick={salvarOuAtualizar}>
                   {alunoEditando ? 'Atualizar' : 'Salvar'}
                 </Button>
+
+                {alunoEditando && (
+                  <Button variant="secondary" className="ms-2" onClick={limparFormulario}>
+                    Cancelar
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -233,10 +286,10 @@ export default function Alunos() {
           {/* FILTRO + LIMITE */}
           <div className="row mb-3 align-items-end">
             <div className="col-md-6">
-              <Form.Label>Pesquisar</Form.Label>
+              <Form.Label>Pesquisar (todas as colunas)</Form.Label>
               <Form.Control
-                placeholder="Digite qualquer informação"
                 value={pesquisa}
+                placeholder="Digite qualquer informação"
                 onChange={e => {
                   setPesquisa(e.target.value);
                   setPagina(1);
@@ -288,12 +341,10 @@ export default function Alunos() {
                     <td>{formatarDataParaTela(aluno.datanascimento) || '-'}</td>
                     <td>{aluno.processo || '-'}</td>
                     <td>
-                      <Button size="sm" variant="warning" className="me-2" onClick={() => editarAluno(aluno)}>
-                        Editar
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => confirmarExcluir(aluno)}>
-                        Excluir
-                      </Button>
+                      <Button size="sm" variant="warning" className="me-2"
+                        onClick={() => editarAluno(aluno)}>Editar</Button>
+                      <Button size="sm" variant="danger"
+                        onClick={() => confirmarExcluir(aluno)}>Excluir</Button>
                     </td>
                   </tr>
                 ))}
