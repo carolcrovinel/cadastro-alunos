@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
-import { Alert, Button, Modal, Form } from 'react-bootstrap';
+import { Alert, Button, Modal, Form, Collapse } from 'react-bootstrap';
 
 export default function Alunos() {
   const [alunos, setAlunos] = useState([]);
@@ -11,7 +11,13 @@ export default function Alunos() {
   const [pagina, setPagina] = useState(1);
   const [total, setTotal] = useState(0);
 
-  // itens por página (máx 100)
+  // controle visual
+  const [mostrarCadastro, setMostrarCadastro] = useState(false);
+
+  // controle usuário
+  const [emailUsuario, setEmailUsuario] = useState(null);
+
+  // itens por página
   const [limite, setLimite] = useState(10);
 
   // ordenação
@@ -38,25 +44,29 @@ export default function Alunos() {
   });
 
   /* ======================
-     MÁSCARAS / FORMATOS
+     USER / AUTH
+     ====================== */
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setEmailUsuario(data?.user?.email || null);
+    });
+  }, []);
+
+  /* ======================
+     MÁSCARAS
      ====================== */
 
   function handleDateChange(e) {
     let value = e.target.value.replace(/\D/g, '');
-
     if (value.length > 2) value = value.replace(/^(\d{2})(\d)/, '$1/$2');
     if (value.length > 5) value = value.replace(/^(\d{2})\/(\d{2})(\d)/, '$1/$2/$3');
-
     setForm({ ...form, datanascimento: value });
   }
 
   function handleProcessoChange(e) {
     let value = e.target.value.replace(/\D/g, '');
-
-    if (value.length > 4) {
-      value = value.replace(/^(\d{4})(\d)/, '$1/$2');
-    }
-
+    if (value.length > 4) value = value.replace(/^(\d{4})(\d)/, '$1/$2');
     setForm({ ...form, processo: value });
   }
 
@@ -91,21 +101,45 @@ export default function Alunos() {
   }
 
   /* ======================
-     VALIDAÇÕES
+     CSV EXPORT
      ====================== */
 
-  async function processoJaExiste(processo) {
-    let query = supabase
+  async function exportarCSV() {
+    const { data } = await supabase
       .from('alunos')
-      .select('id')
-      .eq('processo', processo);
+      .select('*')
+      .or(
+        pesquisa
+          ? `nome.ilike.%${pesquisa}%,nomemae.ilike.%${pesquisa}%,processo.ilike.%${pesquisa}%`
+          : undefined
+      )
+      .order(ordenacao.coluna, { ascending: ordenacao.direcao === 'asc' });
 
-    if (alunoEditando) {
-      query = query.neq('id', alunoEditando);
-    }
+    if (!data || data.length === 0) return;
 
-    const { data } = await query;
-    return data && data.length > 0;
+    const header = ['Nome', 'Mãe', 'Nascimento', 'Processo', 'Observações'];
+
+    const rows = data.map(a => [
+      a.nome,
+      a.nomemae || '',
+      formatarDataParaTela(a.datanascimento),
+      a.processo || '',
+      a.observacoes || ''
+    ]);
+
+    const csv = [header, ...rows]
+      .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'alunos.csv';
+    link.click();
+
+    URL.revokeObjectURL(url);
   }
 
   /* ======================
@@ -129,7 +163,6 @@ export default function Alunos() {
     }
 
     const { data, count } = await query;
-
     setAlunos(data || []);
     setTotal(count || 0);
   }
@@ -139,15 +172,6 @@ export default function Alunos() {
       setTipoMensagem('danger');
       setMensagem('O nome do aluno é obrigatório.');
       return;
-    }
-
-    if (form.processo) {
-      const existe = await processoJaExiste(form.processo);
-      if (existe) {
-        setTipoMensagem('danger');
-        setMensagem('Já existe um aluno cadastrado com este número de processo.');
-        return;
-      }
     }
 
     const payload = {
@@ -170,6 +194,7 @@ export default function Alunos() {
 
   function editarAluno(aluno) {
     setAlunoEditando(aluno.id);
+    setMostrarCadastro(true);
     setForm({
       nome: aluno.nome || '',
       nomemae: aluno.nomemae || '',
@@ -177,19 +202,6 @@ export default function Alunos() {
       processo: aluno.processo || '',
       observacoes: aluno.observacoes || ''
     });
-  }
-
-  function confirmarExcluir(aluno) {
-    setAlunoParaExcluir(aluno);
-    setShowModalExcluir(true);
-  }
-
-  async function excluirAluno() {
-    await supabase.from('alunos').delete().eq('id', alunoParaExcluir.id);
-    setMensagem('Aluno excluído com sucesso.');
-    setTipoMensagem('success');
-    setShowModalExcluir(false);
-    carregarAlunos();
   }
 
   function limparFormulario() {
@@ -207,10 +219,6 @@ export default function Alunos() {
     await supabase.auth.signOut();
   }
 
-  /* ======================
-     EFFECT
-     ====================== */
-
   useEffect(() => {
     carregarAlunos();
   }, [pesquisa, pagina, ordenacao, limite]);
@@ -225,111 +233,92 @@ export default function Alunos() {
         <div className="px-4 py-3">
 
           {mensagem && (
-            <Alert
-              variant={tipoMensagem}
-              dismissible
-              onClose={() => setMensagem(null)}
-            >
+            <Alert variant={tipoMensagem} dismissible onClose={() => setMensagem(null)}>
               {mensagem}
             </Alert>
           )}
 
-          <h4 className="mb-3">
-            {alunoEditando ? 'Editando aluno' : 'Cadastro'}
-          </h4>
+          {/* BOTÕES TOPO */}
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <Button
+              variant="outline-secondary"
+              onClick={() => setMostrarCadastro(!mostrarCadastro)}
+            >
+              {mostrarCadastro ? 'Ocultar cadastro' : 'Mostrar cadastro'}
+            </Button>
 
-          {/* FORM */}
-          <div className="card mb-4">
-            <div className="card-body">
-              <div className="row g-3">
-                <div className="col-md-6">
-                  <input className="form-control" placeholder="Nome" value={form.nome}
-                    onChange={e => setForm({ ...form, nome: e.target.value })} />
-                </div>
-
-                <div className="col-md-6">
-                  <input className="form-control" placeholder="Nome da mãe" value={form.nomemae}
-                    onChange={e => setForm({ ...form, nomemae: e.target.value })} />
-                </div>
-
-                <div className="col-md-4">
-                  <input className="form-control" placeholder="dd/mm/aaaa"
-                    value={form.datanascimento} onChange={handleDateChange} maxLength={10} />
-                </div>
-
-                <div className="col-md-4">
-                  <input className="form-control" placeholder="Processo"
-                    value={form.processo} onChange={handleProcessoChange} maxLength={7} />
-                </div>
-
-                <div className="col-12">
-                  <textarea className="form-control" rows="3" placeholder="Observações"
-                    value={form.observacoes}
-                    onChange={e => setForm({ ...form, observacoes: e.target.value })} />
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <Button variant="danger" onClick={salvarOuAtualizar}>
-                  {alunoEditando ? 'Atualizar' : 'Salvar'}
-                </Button>
-
-                {alunoEditando && (
-                  <Button variant="secondary" className="ms-2" onClick={limparFormulario}>
-                    Cancelar
-                  </Button>
-                )}
-              </div>
-            </div>
+            {emailUsuario === 'carol.crovinel@gmail.com' && (
+              <Button variant="outline-success" onClick={exportarCSV}>
+                Exportar CSV
+              </Button>
+            )}
           </div>
 
-          {/* FILTRO + LIMITE */}
-          <div className="row mb-3 align-items-end">
-            <div className="col-md-6">
-              <Form.Label>Pesquisar (todas as colunas)</Form.Label>
-              <Form.Control
-                value={pesquisa}
-                placeholder="Digite qualquer informação"
-                onChange={e => {
-                  setPesquisa(e.target.value);
-                  setPagina(1);
-                }}
-              />
-            </div>
+          {/* CADASTRO */}
+          <Collapse in={mostrarCadastro}>
+            <div>
+              <div className="card mb-4">
+                <div className="card-body">
+                  <h5>{alunoEditando ? 'Editando aluno' : 'Novo aluno'}</h5>
 
-            <div className="col-md-3">
-              <Form.Label>Itens por página</Form.Label>
-              <Form.Select
-                value={limite}
-                onChange={e => {
-                  setLimite(Number(e.target.value));
-                  setPagina(1);
-                }}
-              >
-                {[5, 10, 20, 50, 100].map(v => (
-                  <option key={v} value={v}>{v}</option>
-                ))}
-              </Form.Select>
-            </div>
-          </div>
+                  <div className="row g-3 mt-1">
+                    <div className="col-md-6">
+                      <input className="form-control" placeholder="Nome"
+                        value={form.nome}
+                        onChange={e => setForm({ ...form, nome: e.target.value })} />
+                    </div>
 
-          {/* TABELA */}
+                    <div className="col-md-6">
+                      <input className="form-control" placeholder="Nome da mãe"
+                        value={form.nomemae}
+                        onChange={e => setForm({ ...form, nomemae: e.target.value })} />
+                    </div>
+
+                    <div className="col-md-4">
+                      <input className="form-control" placeholder="dd/mm/aaaa"
+                        value={form.datanascimento}
+                        onChange={handleDateChange} />
+                    </div>
+
+                    <div className="col-md-4">
+                      <input className="form-control" placeholder="Processo)"
+                        value={form.processo}
+                        onChange={handleProcessoChange} />
+                    </div>
+
+                    <div className="col-12">
+                      <textarea className="form-control" rows="3"
+                        placeholder="Observações"
+                        value={form.observacoes}
+                        onChange={e => setForm({ ...form, observacoes: e.target.value })} />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <Button variant="danger" onClick={salvarOuAtualizar}>
+                      {alunoEditando ? 'Atualizar' : 'Salvar'}
+                    </Button>
+
+                    {alunoEditando && (
+                      <Button className="ms-2" variant="secondary" onClick={limparFormulario}>
+                        Cancelar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Collapse>
+
+          {/* LISTAGEM */}
           <div className="table-responsive">
             <table className="table table-striped table-hover">
               <thead className="table-danger">
                 <tr>
-                  <th onClick={() => ordenarPor('nome')} style={{ cursor: 'pointer' }}>
-                    Nome {iconeOrdenacao('nome')}
-                  </th>
-                  <th onClick={() => ordenarPor('nomemae')} style={{ cursor: 'pointer' }}>
-                    Mãe {iconeOrdenacao('nomemae')}
-                  </th>
-                  <th onClick={() => ordenarPor('datanascimento')} style={{ cursor: 'pointer' }}>
-                    Nascimento {iconeOrdenacao('datanascimento')}
-                  </th>
-                  <th onClick={() => ordenarPor('processo')} style={{ cursor: 'pointer' }}>
-                    Processo {iconeOrdenacao('processo')}
-                  </th>
+                  <th onClick={() => ordenarPor('nome')}>Nome {iconeOrdenacao('nome')}</th>
+                  <th onClick={() => ordenarPor('nomemae')}>Mãe {iconeOrdenacao('nomemae')}</th>
+                  <th onClick={() => ordenarPor('datanascimento')}>Nascimento {iconeOrdenacao('datanascimento')}</th>
+                  <th onClick={() => ordenarPor('processo')}>Processo {iconeOrdenacao('processo')}</th>
                   <th>Ações</th>
                 </tr>
               </thead>
@@ -338,13 +327,11 @@ export default function Alunos() {
                   <tr key={aluno.id}>
                     <td>{aluno.nome}</td>
                     <td>{aluno.nomemae || '-'}</td>
-                    <td>{formatarDataParaTela(aluno.datanascimento) || '-'}</td>
+                    <td>{formatarDataParaTela(aluno.datanascimento)}</td>
                     <td>{aluno.processo || '-'}</td>
                     <td>
                       <Button size="sm" variant="warning" className="me-2"
                         onClick={() => editarAluno(aluno)}>Editar</Button>
-                      <Button size="sm" variant="danger"
-                        onClick={() => confirmarExcluir(aluno)}>Excluir</Button>
                     </td>
                   </tr>
                 ))}
@@ -352,42 +339,10 @@ export default function Alunos() {
             </table>
           </div>
 
-          {/* PAGINAÇÃO */}
-          {totalPaginas > 1 && (
-            <nav className="mt-3">
-              <ul className="pagination justify-content-center">
-                {[...Array(totalPaginas)].map((_, i) => (
-                  <li key={i} className={`page-item ${pagina === i + 1 ? 'active' : ''}`}>
-                    <button className="page-link" onClick={() => setPagina(i + 1)}>
-                      {i + 1}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </nav>
-          )}
         </div>
       </main>
 
       <Footer />
-
-      {/* MODAL EXCLUIR */}
-      <Modal show={showModalExcluir} onHide={() => setShowModalExcluir(false)} centered>
-        <Modal.Header closeButton>
-          <Modal.Title>Confirmar exclusão</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          Deseja realmente excluir o aluno <strong>{alunoParaExcluir?.nome}</strong>?
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowModalExcluir(false)}>
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={excluirAluno}>
-            Excluir
-          </Button>
-        </Modal.Footer>
-      </Modal>
     </div>
   );
 }
