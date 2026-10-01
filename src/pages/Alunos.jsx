@@ -74,8 +74,14 @@ export default function Alunos() {
     }
 
     function handleProcessoChange(e) {
-        let v = e.target.value.replace(/\D/g, '');
-        if (v.length > 4) v = v.replace(/^(\d{4})(\d)/, '$1/$2');
+        let v = e.target.value.toUpperCase().replace(/[^A-Z0-9/.-]/g, '');
+
+        // só números: mantém a máscara 0000/000...
+        const digitos = v.replace(/\//g, '');
+        if (/^\d+$/.test(digitos)) {
+            v = digitos.length > 4 ? digitos.replace(/^(\d{4})(\d)/, '$1/$2') : digitos;
+        }
+
         setForm({ ...form, processo: v });
     }
 
@@ -241,6 +247,21 @@ export default function Alunos() {
 
     const totalPaginas = Math.ceil(total / limite);
 
+    // primeira, última e 2 vizinhas de cada lado da atual; '...' nos intervalos
+    function paginasVisiveis() {
+        const paginas = [];
+        const inicio = Math.max(2, pagina - 2);
+        const fim = Math.min(totalPaginas - 1, pagina + 2);
+
+        paginas.push(1);
+        if (inicio > 2) paginas.push('...');
+        for (let i = inicio; i <= fim; i++) paginas.push(i);
+        if (fim < totalPaginas - 1) paginas.push('...');
+        if (totalPaginas > 1) paginas.push(totalPaginas);
+
+        return paginas;
+    }
+
     /* ======================
        CSV
        ====================== */
@@ -404,14 +425,34 @@ export default function Alunos() {
                 {/* PAGINAÇÃO */}
                 {totalPaginas > 1 && (
                     <nav>
-                        <ul className="pagination justify-content-center">
-                            {[...Array(totalPaginas)].map((_, i) => (
-                                <li key={i} className={`page-item ${pagina === i + 1 ? 'active' : ''}`}>
-                                    <button className="page-link" onClick={() => setPagina(i + 1)}>
-                                        {i + 1}
-                                    </button>
-                                </li>
+                        <ul className="pagination justify-content-center flex-wrap">
+                            <li className={`page-item ${pagina === 1 ? 'disabled' : ''}`}>
+                                <button className="page-link" disabled={pagina === 1}
+                                    onClick={() => setPagina(pagina - 1)}>
+                                    Anterior
+                                </button>
+                            </li>
+
+                            {paginasVisiveis().map((p, i) => (
+                                p === '...' ? (
+                                    <li key={`r${i}`} className="page-item disabled">
+                                        <span className="page-link">…</span>
+                                    </li>
+                                ) : (
+                                    <li key={p} className={`page-item ${pagina === p ? 'active' : ''}`}>
+                                        <button className="page-link" onClick={() => setPagina(p)}>
+                                            {p}
+                                        </button>
+                                    </li>
+                                )
                             ))}
+
+                            <li className={`page-item ${pagina === totalPaginas ? 'disabled' : ''}`}>
+                                <button className="page-link" disabled={pagina === totalPaginas}
+                                    onClick={() => setPagina(pagina + 1)}>
+                                    Próxima
+                                </button>
+                            </li>
                         </ul>
                     </nav>
                 )}
