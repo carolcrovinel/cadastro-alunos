@@ -36,8 +36,8 @@ export default function Alunos() {
        ====================== */
 
     const [ordenacao, setOrdenacao] = useState({
-        coluna: 'created_at',
-        direcao: 'desc'
+        coluna: 'nome',
+        direcao: 'asc'
     });
 
     /* ======================
